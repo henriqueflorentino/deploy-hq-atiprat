@@ -39,16 +39,21 @@ jobs:
           script: |
             echo '🔄 Limpando containers antigos do SonarQube...'
             docker rm -f sonarqube-temp || true
-
+      
             echo '📦 Baixando imagem do SonarQube...'
             docker pull sonarqube:latest
-
+      
             echo '🚀 Subindo container temporário do SonarQube...'
             docker run -d --name sonarqube-temp -p 9000:9000 sonarqube:latest
-
+      
             echo '⏳ Aguardando SonarQube iniciar...'
             sleep 60
-
+      
+            echo '🔧 Instalando sonar-scanner...'
+            wget -qO- https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip -O scanner.zip
+            unzip -q scanner.zip
+            export PATH="$PWD/sonar-scanner-5.0.1.3006-linux/bin:$PATH"
+      
             echo '⚙️ Rodando análise com sonar-scanner...'
             sonar-scanner \
               -Dsonar.projectKey=flask-app \
@@ -61,15 +66,15 @@ jobs:
                 docker rm sonarqube-temp
                 exit 1
               }
-
+      
             echo '✅ Análise SonarQube aprovada.'
             docker stop sonarqube-temp
             docker rm sonarqube-temp
-
+      
             echo '🧹 Limpando aplicação antiga (se houver)...'
             docker rm -f meu-app || true
-
+      
             echo '🚀 Subindo nova versão da aplicação...'
             docker run -d --name meu-app -p 8134:5000 henriqueflorentino/deploy-hq-atiprat
-
+      
             echo '✅ Deploy finalizado com sucesso. Aplicação disponível em http://201.23.3.86:8134'
