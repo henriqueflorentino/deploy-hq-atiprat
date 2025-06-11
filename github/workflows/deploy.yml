@@ -1,4 +1,4 @@
-name: Deploy Flask App
+name: CI/CD Deploy
 
 on:
   push:
@@ -6,58 +6,53 @@ on:
       - main
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Checkout do código
+      - name: Checkout repo
         uses: actions/checkout@v3
 
-      - name: 🔐 Login no Docker Hub
-        uses: docker/login-action@v2
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.5.4
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: 🛠 Build e Push da imagem Docker
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          tags: henriqueflorentino/deploy-hq-atiprat:latest
-
-      - name: 🚀 Inicia SonarQube no servidor remoto
+      - name: Run deployment on remote server
         run: |
-          echo "${{ secrets.SERVER_SSH_KEY }}" > key.pem
-          chmod 600 key.pem
-          ssh -o StrictHostKeyChecking=no -i key.pem aluno@201.23.3.86 << 'EOF'
-            docker rm -f sonar || true
-            docker run -d --name sonar -p 8134:9000 sonarqube:lts
-            echo "Aguardando SonarQube subir..."
+          ssh -o StrictHostKeyChecking=no aluno@201.23.3.86 bash -c "'
+            # Puxa a imagem do SonarQube
+            docker pull sonarqube:latest
+
+            # Sobe SonarQube temporário (sem porta exposta)
+            docker run -d --name sonarqube-temp sonarqube:latest
+
+            # Espera SonarQube subir (exemplo 40 segundos, ajuste se precisar)
             sleep 40
-          EOF
 
-      - name: 🧪 Análise de código com Sonar Scanner
-        uses: sonarsource/sonarcloud-github-action@v1
-        with:
-          projectKey: deploy-hq-atiprat
-          organization: your-sonar-org  # Substitua se estiver usando SonarCloud
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: http://201.23.3.86:8134
+            # Executa análise apontando para SonarQube local (container)
+            # Ajuste o comando de análise conforme seu projeto
+            cd /caminho/do/projeto/no/servidor && \
+            ./gradlew sonarqube -Dsonar.host.url=http://localhost:9000 || exit 1
 
-      - name: 🧹 Encerra o container do SonarQube
-        if: always()
-        run: |
-          ssh -o StrictHostKeyChecking=no -i key.pem aluno@201.23.3.86 << 'EOF'
-            docker rm -f sonar || true
-          EOF
+            # Pega resultado da análise
+            ANALYSIS_STATUS=$(docker logs sonarqube-temp | grep 'Quality Gate passed')
+            if [[ -z \"$ANALYSIS_STATUS\" ]]; then
+              echo 'Quality gate falhou, abortando deploy.'
+              docker stop sonarqube-temp
+              docker rm sonarqube-temp
+              exit 1
+            fi
 
-      - name: 🚢 Deploy da aplicação (se aprovado)
-        if: success()
-        run: |
-          ssh -o StrictHostKeyChecking=no -i key.pem aluno@201.23.3.86 << 'EOF'
-            docker rm -f hq-app || true
-            docker pull henriqueflorentino/deploy-hq-atiprat:latest
-            docker run -d --name hq-app -p 8135:5000 henriqueflorentino/deploy-hq-atiprat:latest
-          EOF
+            # Para e remove SonarQube temporário
+            docker stop sonarqube-temp
+            docker rm sonarqube-temp
+
+            # Remove container antigo da aplicação (se existir)
+            docker rm -f meu-app || true
+
+            # Sobe novo container da aplicação na porta 8134
+            docker run -d --name meu-app -p 8134:8134 henriqueflorentino/deploy-hq-atiprat
+
+            echo 'Deploy realizado com sucesso.'
+          '"
