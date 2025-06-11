@@ -71,8 +71,7 @@ jobs:
               -Dsonar.projectKey=flask-app \
               -Dsonar.sources=. \
               -Dsonar.host.url=http://sonarqube-temp:9000 \
-              -Dsonar.login=admin \
-              -Dsonar.password=admin || {
+              -Dsonar.token=${{ secrets.SONAR_TOKEN }} || {
                 echo "❌ Análise SonarQube falhou."
                 docker stop sonarqube-temp
                 docker rm sonarqube-temp
