@@ -90,3 +90,4 @@ jobs:
             docker run -d --name meu-app -p 8134:5000 henriqueflorentino/deploy-hq-atiprat
 
             echo '✅ Deploy finalizado com sucesso. Aplicação disponível em http://201.23.3.86:8134'
+            docker ps
