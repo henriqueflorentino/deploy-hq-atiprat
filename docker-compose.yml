@@ -9,7 +9,7 @@ services:
       MYSQL_USER: user
       MYSQL_PASSWORD: password
     ports:
-      - "3307:3306"
+      - "3307:3306"  # Porta mapeada conforme necessário
     volumes:
       - db_data:/var/lib/mysql
     healthcheck:
@@ -38,12 +38,12 @@ services:
       init-db:
         condition: service_completed_successfully
     ports:
-      - "8134:5000"
+      - "8134:5000"  # Altere para a porta que você vai expor no servidor
     environment:
       FLASK_APP: run.py
-      FLASK_ENV: development
-      FLASK_DEBUG: 1  # Habilita modo debug
-      SECRET_KEY: "sua-chave-secreta-aqui-123"  # Adicione esta linha
+      FLASK_ENV: production  # Produção!
+      FLASK_DEBUG: 0         # Desativa debug em produção
+      SECRET_KEY: "sua-chave-super-secreta"  # Segurança em produção
       MYSQL_HOST: db
       MYSQL_USER: user
       MYSQL_PASSWORD: password
