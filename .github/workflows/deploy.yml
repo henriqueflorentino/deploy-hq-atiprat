@@ -48,7 +48,7 @@ jobs:
             docker pull sonarqube:latest
 
             echo '🚀 Subindo container do SonarQube...'
-            docker run -d --name sonarqube-temp --network sonar-net -p 9000:9000 sonarqube:latest
+            docker run -d --name sonarqube-temp --network sonar-net -p 8134:9000 sonarqube:latest
 
             echo '⏳ Aguardando SonarQube ficar pronto...'
             for i in {1..20}; do
