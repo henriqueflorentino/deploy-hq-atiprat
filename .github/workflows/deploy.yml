@@ -1,0 +1,63 @@
+name: Deploy Flask App
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout do código
+        uses: actions/checkout@v3
+
+      - name: 🔐 Login no Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 🛠 Build e Push da imagem Docker
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: henriqueflorentino/deploy-hq-atiprat:latest
+
+      - name: 🚀 Inicia SonarQube no servidor remoto
+        run: |
+          echo "${{ secrets.SERVER_SSH_KEY }}" > key.pem
+          chmod 600 key.pem
+          ssh -o StrictHostKeyChecking=no -i key.pem aluno@201.23.3.86 << 'EOF'
+            docker rm -f sonar || true
+            docker run -d --name sonar -p 8134:9000 sonarqube:lts
+            echo "Aguardando SonarQube subir..."
+            sleep 40
+          EOF
+
+      - name: 🧪 Análise de código com Sonar Scanner
+        uses: sonarsource/sonarcloud-github-action@v1
+        with:
+          projectKey: deploy-hq-atiprat
+          organization: your-sonar-org  # Substitua se estiver usando SonarCloud
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: http://201.23.3.86:8134
+
+      - name: 🧹 Encerra o container do SonarQube
+        if: always()
+        run: |
+          ssh -o StrictHostKeyChecking=no -i key.pem aluno@201.23.3.86 << 'EOF'
+            docker rm -f sonar || true
+          EOF
+
+      - name: 🚢 Deploy da aplicação (se aprovado)
+        if: success()
+        run: |
+          ssh -o StrictHostKeyChecking=no -i key.pem aluno@201.23.3.86 << 'EOF'
+            docker rm -f hq-app || true
+            docker pull henriqueflorentino/deploy-hq-atiprat:latest
+            docker run -d --name hq-app -p 8135:5000 henriqueflorentino/deploy-hq-atiprat:latest
+          EOF
