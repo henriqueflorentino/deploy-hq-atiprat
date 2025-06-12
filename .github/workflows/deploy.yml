@@ -38,12 +38,16 @@ jobs:
           command_timeout: 15m
           script: |
             echo '🧹 Limpando containers antigos...'
-            docker rm -f meu-app init-db db_henrique || true
-            docker network create minha-rede || true
+            docker rm -f app_henrique db_henrique init-db-henrique || true
+            docker network create rede-henrique || true
+
+            echo 'Atualizando os containers...'
+            docker pull henriqueflorentino/deploy-hq-atiprat
+            echo 'Containers atualizados'
 
             echo '🐬 Subindo container do MySQL...'
             docker run -d --name db_henrique \
-              --network minha-rede \
+              --network rede-henrique \
               -e MYSQL_ROOT_PASSWORD=root \
               -e MYSQL_DATABASE=mydb \
               -e MYSQL_USER=user \
@@ -74,8 +78,8 @@ jobs:
             fi
 
             echo '⚙️ Inicializando banco de dados...'
-            docker run --rm --name init-db \
-              --network minha-rede \
+            docker run --rm --name init-db-henrique \
+              --network rede-henrique \
               -e MYSQL_HOST=db_henrique \
               -e MYSQL_USER=user \
               -e MYSQL_PASSWORD=password \
@@ -84,12 +88,11 @@ jobs:
               bash -c "sleep 10 && python init_db.py"
 
             echo '🚀 Subindo aplicação Flask...'
-            docker run -d --name meu-app \
+            docker run -d --name app_henrique \
               --network minha-rede \
               -e FLASK_APP=run.py \
               -e FLASK_ENV=production \
               -e FLASK_DEBUG=0 \
-              -e SECRET_KEY=${{ secrets.SECRET_KEY }} \
               -e MYSQL_HOST=db_henrique \
               -e MYSQL_USER=user \
               -e MYSQL_PASSWORD=password \
