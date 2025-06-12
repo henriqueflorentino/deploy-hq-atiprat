@@ -27,7 +27,7 @@ jobs:
         run: |
           docker push henriqueflorentino/deploy-hq-atiprat
 
-      - name: Run deployment and analysis on remote server
+      - name: Run deployment on remote server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 201.23.3.86
@@ -37,83 +37,79 @@ jobs:
           timeout: 30s
           command_timeout: 15m
           script: |
-            # echo '🔄 Limpando containers antigos...'
-            # docker rm -f sonarhenriquef || true
-            # docker rm -f scannerhenriquef || true
-            # docker rm -f meu-app || true
+            echo '🔄 Limpando containers e rede anteriores...'
+            docker rm -f meu-app db init-db || true
+            docker volume rm db_data || true
+            docker network rm rede-henriquef || true
 
-            # echo '🔗 Criando rede Docker...'
-            # docker network create sonar-net-henriquef || true
+            echo '🔗 Criando rede Docker personalizada...'
+            docker network create rede-henriquef
 
-            # echo '📂 Criando volume persistente do SonarQube...'
-            # docker volume create sonar_data || true
+            echo '📦 Criando volume do banco...'
+            docker volume create db_data
 
-            # echo '📦 Usando imagem LTS mais leve do SonarQube...'
-            # docker pull sonarqube:lts-community
+            echo '🐬 Subindo container do MySQL na porta 8135...'
+            docker run -d \
+              --name db \
+              --network rede-henriquef \
+              -e MYSQL_ROOT_PASSWORD=root \
+              -e MYSQL_DATABASE=mydb \
+              -e MYSQL_USER=user \
+              -e MYSQL_PASSWORD=password \
+              -p 8135:3306 \
+              -v db_data:/var/lib/mysql \
+              --health-cmd="mysqladmin ping -h localhost" \
+              --health-interval=5s \
+              --health-timeout=10s \
+              --health-retries=10 \
+              --restart unless-stopped \
+              mysql:8.0
 
-            # echo '🚀 Subindo container do SonarQube...'
-            # docker run -d \
-            #   --name sonarhenriquef \
-            #   --network sonar-net-henriquef \
-            #   -p 8134:9000 \
-            #   -v sonar_data:/opt/sonarqube/data \
-            #   -e SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true \
-            #   -e SONAR_JAVA_OPTS="-Xmx512m -Xms256m" \
-            #   sonarqube:lts-community
+            echo '⏳ Aguardando MySQL ficar saudável...'
+            for i in {1..20}; do
+              STATUS=$(docker inspect --format='{{json .State.Health.Status}}' db)
+              if [ "$STATUS" = "\"healthy\"" ]; then
+                echo "✅ MySQL está saudável."
+                break
+              fi
+              echo "⌛ Esperando MySQL... ($i/20)"
+              sleep 5
+            done
 
-            #   echo '⏳ Aguardando SonarQube ficar pronto...'
-            #   for i in {1..30}; do
-            #     if curl -s http://localhost:8134/api/system/health | grep -q '"status":"UP"'; then
-            #       echo "✅ SonarQube está pronto."
-            #       break
-            #     fi
-            #     echo "⌛ Ainda não está pronto... aguardando 5s ($i/30)"
-            #     sleep 5
-            #   done
-              
-            #   if ! curl -s http://localhost:8134/api/system/health | grep -q '"status":"UP"'; then
-            #     echo "❌ SonarQube não ficou pronto a tempo. Logs:"
-            #     docker logs sonarhenriquef || true
-            #     docker stop sonarhenriquef
-            #     docker rm sonarhenriquef
-            #     exit 1
-            #   fi
+            if [ "$STATUS" != "\"healthy\"" ]; then
+              echo "❌ MySQL não ficou pronto a tempo. Logs:"
+              docker logs db || true
+              exit 1
+            fi
 
+            echo '⚙️ Rodando init-db com init_db.py...'
+            docker run --rm \
+              --name init-db \
+              --network rede-henriquef \
+              -e MYSQL_HOST=db \
+              -e MYSQL_USER=user \
+              -e MYSQL_PASSWORD=password \
+              -e MYSQL_DATABASE=mydb \
+              -v $(pwd):/app \
+              -w /app \
+              henriqueflorentino/deploy-hq-atiprat \
+              bash -c "sleep 15 && python init_db.py"
 
-            # if ! curl -s http://localhost:8134/api/system/health | grep -q '"status":"UP"'; then
-            #   echo "❌ SonarQube não ficou pronto a tempo. Logs:"
-            #   docker logs sonarhenriquef || true
-            #   docker stop sonarhenriquef
-            #   docker rm sonarhenriquef
-            #   exit 1
-            # fi
+            echo '🚀 Subindo aplicação Flask na porta 8134...'
+            docker run -d \
+              --name meu-app \
+              --network rede-henriquef \
+              -e FLASK_APP=run.py \
+              -e FLASK_ENV=production \
+              -e FLASK_DEBUG=0 \
+              -e SECRET_KEY='sua-chave-super-secreta' \
+              -e MYSQL_HOST=db \
+              -e MYSQL_USER=user \
+              -e MYSQL_PASSWORD=password \
+              -e MYSQL_DATABASE=mydb \
+              -p 8134:5000 \
+              -v $(pwd):/app \
+              henriqueflorentino/deploy-hq-atiprat
 
-            # echo '⚙️ Rodando análise com sonar-scanner via Docker...'
-            # docker run --rm \
-            #   --name scannerhenriquef \
-            #   --network sonar-net-henriquef \
-            #   -v "$(pwd)":/usr/src \
-            #   -w /usr/src \
-            #   sonarsource/sonar-scanner-cli \
-            #   sonar-scanner \
-            #   -Dsonar.projectKey=flask-henriquef-app \
-            #   -Dsonar.sources=. \
-            #   -Dsonar.host.url=http://sonarhenriquef:9000 \
-            #   -Dsonar.login=admin \
-            #   -Dsonar.password=admin || {
-            #     echo "❌ Análise SonarQube falhou."
-            #     docker logs sonarhenriquef || true
-            #     docker stop sonarhenriquef
-            #     docker rm sonarhenriquef
-            #     exit 1
-            #   }
-
-            # echo '✅ Análise SonarQube aprovada.'
-            # docker stop sonarhenriquef
-            # docker rm sonarhenriquef
-
-            echo '🚀 Subindo nova versão da aplicação...'
-            docker run -d --name meu-app -p 8134:5000 henriqueflorentino/deploy-hq-atiprat
-
-            echo '✅ Deploy finalizado com sucesso. Aplicação disponível em http://201.23.3.86:8134'
+            echo '✅ Deploy finalizado com sucesso. Acesse: http://201.23.3.86:8134'
             docker ps
