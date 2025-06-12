@@ -1,4 +1,4 @@
-name: CI/CD Deploy - Teste
+name: CI/CD Deploy - Teste com SonarQube
 
 on:
   push:
@@ -6,8 +6,133 @@ on:
       - main
 
 jobs:
+  sonar_analysis:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Necessário para o SonarQube analisar todo o histórico
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x' # Use a versão do Python da sua aplicação
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install sonarscanner # Instala o SonarScanner CLI
+
+      - name: Run SonarQube on remote server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 201.23.3.86
+          username: aluno
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          timeout: 30s
+          command_timeout: 15m
+          script: |
+            echo '🧹 Limpando containers SonarQube antigos (se existirem)...'
+            docker rm -f sonarqube_henrique || true
+            docker volume rm -f sonarqube_data_henrique || true
+
+            echo '🚀 Iniciando container SonarQube temporário...'
+            docker run -d --name sonarqube_henrique \
+              -p 8139:9000 \
+              -v sonarqube_data_henrique:/opt/sonarqube/data \
+              sonarqube:latest
+
+            echo '⏳ Aguardando SonarQube ficar pronto...'
+            for i in {1..60}; do
+              HEALTH_CHECK=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8139/api/system/status)
+              if [ "$HEALTH_CHECK" == "200" ]; then
+                echo "✅ SonarQube está pronto."
+                break
+              fi
+              echo "⌛ Aguardando SonarQube... ($i/60)"
+              sleep 5
+            done
+
+            if [ "$HEALTH_CHECK" != "200" ]; then
+              echo "❌ SonarQube não ficou pronto a tempo. Logs:"
+              docker logs sonarqube_henrique
+              exit 1
+            fi
+        
+      - name: SonarQube Scan
+        env:
+          SONAR_HOST_URL: http://201.23.3.86:8139
+          SONAR_LOGIN: admin
+          SONAR_PASSWORD: admin # O professor pediu para usar admin/admin
+        run: |
+          sonar-scanner \
+            -Dsonar.projectKey=deploy-hq-atiprat \
+            -Dsonar.sources=. \
+            -Dsonar.host.url=${{ env.SONAR_HOST_URL }} \
+            -Dsonar.login=${{ env.SONAR_LOGIN }} \
+            -Dsonar.password=${{ env.SONAR_PASSWORD }} \
+            -Dsonar.project.name="Deploy HQ Atiprat" \
+            -Dsonar.python.version=3 # Adapte para a versão do seu Python
+          
+      - name: Check SonarQube Quality Gate
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 201.23.3.86
+          username: aluno
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          timeout: 30s
+          command_timeout: 5m
+          script: |
+            PROJECT_KEY="deploy-hq-atiprat"
+            SONAR_HOST_URL="http://localhost:8139"
+            SONAR_LOGIN="admin"
+            SONAR_PASSWORD="admin"
+
+            # Aguardar o processamento da análise
+            echo "⏳ Aguardando o processamento da análise do SonarQube..."
+            ANALYSIS_STATUS=""
+            for i in {1..30}; do
+              RESPONSE=$(curl -s -u "${SONAR_LOGIN}:${SONAR_PASSWORD}" "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=${PROJECT_KEY}")
+              STATUS=$(echo "$RESPONSE" | jq -r '.projectStatus.status')
+
+              if [ "$STATUS" == "OK" ] || [ "$STATUS" == "ERROR" ] || [ "$STATUS" == "WARN" ]; then
+                ANALYSIS_STATUS="$STATUS"
+                break
+              fi
+              echo "Aguardando status da análise: $STATUS ($i/30)"
+              sleep 5
+            done
+
+            if [ "$ANALYSIS_STATUS" != "OK" ]; then
+              echo "❌ A análise do SonarQube não aprovou o código. Status: $ANALYSIS_STATUS"
+              exit 1
+            else
+              echo "✅ Análise do SonarQube aprovada! Status: $ANALYSIS_STATUS"
+            fi
+
+      - name: Stop and Remove SonarQube container
+        if: always() # Garante que este passo será executado mesmo se o SonarQube falhar
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 201.23.3.86
+          username: aluno
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          timeout: 30s
+          command_timeout: 5m
+          script: |
+            echo '🛑 Parando e removendo container SonarQube...'
+            docker rm -f sonarqube_henrique || true
+            docker volume rm -f sonarqube_data_henrique || true
+            echo 'SonarQube removido.'
+
   deploy:
     runs-on: ubuntu-latest
+    needs: sonar_analysis # Garante que o deploy só rode se a análise do SonarQube for bem-sucedida
 
     steps:
       - name: Checkout repo
@@ -27,7 +152,7 @@ jobs:
         run: |
           docker push henriqueflorentino/deploy-hq-atiprat
 
-      - name: Run SonarQube analysis and deploy remotely
+      - name: Run deployment on remote server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 201.23.3.86
@@ -35,65 +160,17 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           timeout: 30s
-          command_timeout: 20m
+          command_timeout: 15m
           script: |
-            echo '🔄 Limpando containers antigos...'
-            docker rm -f sonarhenriquef scannerhenriquef app_henrique db_henrique init-db-henrique || true
+            echo '🧹 Limpando containers antigos...'
+            docker rm -f app_henrique db_henrique init-db-henrique || true
             docker network create rede-henrique || true
-            docker volume create sonar_data || true
 
-            echo '📦 Subindo SonarQube temporário...'
-            docker run -d \
-              --name sonarhenriquef \
-              --network rede-henrique \
-              -p 8136:9000 \
-              -v sonar_data:/opt/sonarqube/data \
-              -e SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true \
-              -e SONAR_JAVA_OPTS="-Xmx512m -Xms256m" \
-              sonarqube:lts-community
+            echo 'Atualizando os containers...'
+            docker pull henriqueflorentino/deploy-hq-atiprat
+            echo 'Containers atualizados'
 
-            echo '⏳ Aguardando SonarQube iniciar...'
-            for i in {1..30}; do
-              if curl -s http://localhost:8136/api/system/health | grep -q '"status":"UP"'; then
-                echo "✅ SonarQube está pronto."
-                break
-              fi
-              echo "⌛ Aguardando... ($i/30)"
-              sleep 5
-            done
-
-            if ! curl -s http://localhost:8136/api/system/health | grep -q '"status":"UP"'; then
-              echo "❌ SonarQube não iniciou a tempo. Logs:"
-              docker logs sonarhenriquef || true
-              docker stop sonarhenriquef
-              docker rm sonarhenriquef
-              exit 1
-            fi
-
-            echo '🔍 Rodando análise com sonar-scanner...'
-            docker run --rm \
-              --name scannerhenriquef \
-              --network rede-henrique \
-              -v "$(pwd)":/usr/src \
-              -w /usr/src \
-              sonarsource/sonar-scanner-cli \
-              sonar-scanner \
-              -Dsonar.projectKey=flask-henriquef-app \
-              -Dsonar.sources=. \
-              -Dsonar.host.url=http://sonarhenriquef:9000 \
-              -Dsonar.login=admin \
-              -Dsonar.password=admin || {
-                echo "❌ Análise falhou. Abortando deploy."
-                docker stop sonarhenriquef
-                docker rm sonarhenriquef
-                exit 1
-              }
-
-            echo '✅ Análise SonarQube aprovada.'
-            docker stop sonarhenriquef
-            docker rm sonarhenriquef
-
-            echo '🐬 Subindo MySQL...'
+            echo '🐬 Subindo container do MySQL...'
             docker run -d --name db_henrique \
               --network rede-henrique \
               -e MYSQL_ROOT_PASSWORD=root \
@@ -108,19 +185,19 @@ jobs:
               --health-retries=10 \
               mysql:8.0
 
-            echo '⏳ Aguardando banco ficar saudável...'
+            echo '⏳ Aguardando MySQL ficar saudável...'
             for i in {1..30}; do
               STATUS=$(docker inspect --format='{{json .State.Health.Status}}' db_henrique)
               if [ "$STATUS" == "\"healthy\"" ]; then
                 echo "✅ MySQL está saudável."
                 break
               fi
-              echo "⌛ Esperando saúde do banco... ($i/30)"
+              echo "⌛ Aguardando saúde do banco... ($i/30)"
               sleep 5
             done
 
             if [ "$STATUS" != "\"healthy\"" ]; then
-              echo "❌ Banco não saudável. Logs:"
+              echo "❌ MySQL não ficou saudável a tempo. Logs:"
               docker logs db_henrique
               exit 1
             fi
@@ -148,5 +225,5 @@ jobs:
               -p 8134:5000 \
               henriqueflorentino/deploy-hq-atiprat
 
-            echo '✅ Deploy finalizado! Acesse: http://201.23.3.86:8134'
+            echo '✅ Deploy finalizado! Acesse em http://201.23.3.86:8134'
             docker ps
