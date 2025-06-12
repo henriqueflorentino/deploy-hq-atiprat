@@ -27,7 +27,7 @@ jobs:
         run: |
           docker push henriqueflorentino/deploy-hq-atiprat
 
-      - name: Run deployment and analysis on remote server
+      - name: Run SonarQube analysis and deploy remotely
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 201.23.3.86
@@ -35,17 +35,65 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           timeout: 30s
-          command_timeout: 15m
+          command_timeout: 20m
           script: |
-            echo '🧹 Limpando containers antigos...'
-            docker rm -f app_henrique db_henrique init-db-henrique || true
+            echo '🔄 Limpando containers antigos...'
+            docker rm -f sonarhenriquef scannerhenriquef app_henrique db_henrique init-db-henrique || true
             docker network create rede-henrique || true
+            docker volume create sonar_data || true
 
-            echo 'Atualizando os containers...'
-            docker pull henriqueflorentino/deploy-hq-atiprat
-            echo 'Containers atualizados'
+            echo '📦 Subindo SonarQube temporário...'
+            docker run -d \
+              --name sonarhenriquef \
+              --network rede-henrique \
+              -p 8136:9000 \
+              -v sonar_data:/opt/sonarqube/data \
+              -e SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true \
+              -e SONAR_JAVA_OPTS="-Xmx512m -Xms256m" \
+              sonarqube:lts-community
 
-            echo '🐬 Subindo container do MySQL...'
+            echo '⏳ Aguardando SonarQube iniciar...'
+            for i in {1..30}; do
+              if curl -s http://localhost:8136/api/system/health | grep -q '"status":"UP"'; then
+                echo "✅ SonarQube está pronto."
+                break
+              fi
+              echo "⌛ Aguardando... ($i/30)"
+              sleep 5
+            done
+
+            if ! curl -s http://localhost:8136/api/system/health | grep -q '"status":"UP"'; then
+              echo "❌ SonarQube não iniciou a tempo. Logs:"
+              docker logs sonarhenriquef || true
+              docker stop sonarhenriquef
+              docker rm sonarhenriquef
+              exit 1
+            fi
+
+            echo '🔍 Rodando análise com sonar-scanner...'
+            docker run --rm \
+              --name scannerhenriquef \
+              --network rede-henrique \
+              -v "$(pwd)":/usr/src \
+              -w /usr/src \
+              sonarsource/sonar-scanner-cli \
+              sonar-scanner \
+              -Dsonar.projectKey=flask-henriquef-app \
+              -Dsonar.sources=. \
+              -Dsonar.host.url=http://sonarhenriquef:9000 \
+              -Dsonar.login=admin \
+              -Dsonar.password=admin || {
+                echo "❌ Análise falhou. Abortando deploy."
+                docker stop sonarhenriquef
+                docker rm sonarhenriquef
+                exit 1
+              }
+
+            echo '✅ Análise SonarQube aprovada.'
+            docker stop sonarhenriquef
+            docker rm sonarhenriquef
+
+            echo '🐬 Subindo MySQL...'
             docker run -d --name db_henrique \
               --network rede-henrique \
               -e MYSQL_ROOT_PASSWORD=root \
@@ -60,19 +108,19 @@ jobs:
               --health-retries=10 \
               mysql:8.0
 
-            echo '⏳ Aguardando MySQL ficar saudável...'
+            echo '⏳ Aguardando banco ficar saudável...'
             for i in {1..30}; do
               STATUS=$(docker inspect --format='{{json .State.Health.Status}}' db_henrique)
               if [ "$STATUS" == "\"healthy\"" ]; then
                 echo "✅ MySQL está saudável."
                 break
               fi
-              echo "⌛ Aguardando saúde do banco... ($i/30)"
+              echo "⌛ Esperando saúde do banco... ($i/30)"
               sleep 5
             done
 
             if [ "$STATUS" != "\"healthy\"" ]; then
-              echo "❌ MySQL não ficou saudável a tempo. Logs:"
+              echo "❌ Banco não saudável. Logs:"
               docker logs db_henrique
               exit 1
             fi
@@ -100,5 +148,5 @@ jobs:
               -p 8134:5000 \
               henriqueflorentino/deploy-hq-atiprat
 
-            echo '✅ Deploy finalizado! Acesse em http://201.23.3.86:8134'
+            echo '✅ Deploy finalizado! Acesse: http://201.23.3.86:8134'
             docker ps
