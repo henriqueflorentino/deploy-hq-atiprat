@@ -38,17 +38,17 @@ jobs:
           command_timeout: 10m
           script: |
             echo '🔄 Limpando containers antigos...'
-            docker rm -f sonarqube-temp || true
-            docker rm -f scanner-temp || true
+            docker rm -f sonarhenriquef || true
+            docker rm -f scannerhenriquef || true
 
-            echo '🔗 Criando rede Docker compartilhada...'
-            docker network create sonar-net || true
+            echo '🔗 Criando rede Docker personalizada (se não existir)...'
+            docker network inspect sonar-net-henriquef >/dev/null 2>&1 || docker network create sonar-net-henriquef
 
             echo '📦 Baixando imagem do SonarQube...'
             docker pull sonarqube:latest
 
             echo '🚀 Subindo container do SonarQube...'
-            docker run -d --name sonarqube-temp --network sonar-net -p 8134:9000 sonarqube:latest
+            docker run -d --name sonarhenriquef --network sonar-net-henriquef -p 8134:9000 sonarqube:latest
 
             echo '⏳ Aguardando SonarQube ficar pronto...'
             for i in {1..20}; do
@@ -62,25 +62,26 @@ jobs:
 
             echo '⚙️ Rodando análise com sonar-scanner via Docker...'
             docker run --rm \
-              --name scanner-temp \
-              --network sonar-net \
+              --name scannerhenriquef \
+              --network sonar-net-henriquef \
               -v "$(pwd)":/usr/src \
               -w /usr/src \
               sonarsource/sonar-scanner-cli \
               sonar-scanner \
               -Dsonar.projectKey=flask-app \
               -Dsonar.sources=. \
-              -Dsonar.host.url=http://sonarqube-temp:9000 \
-              -Dsonar.token=${{ secrets.SONAR_TOKEN }} || {
+              -Dsonar.host.url=http://sonarhenriquef:9000 \
+              -Dsonar.login=admin \
+              -Dsonar.password=admin || {
                 echo "❌ Análise SonarQube falhou."
-                docker stop sonarqube-temp
-                docker rm sonarqube-temp
+                docker stop sonarhenriquef
+                docker rm sonarhenriquef
                 exit 1
               }
 
             echo '✅ Análise SonarQube aprovada.'
-            docker stop sonarqube-temp
-            docker rm sonarqube-temp
+            docker stop sonarhenriquef
+            docker rm sonarhenriquef
 
             echo '🧹 Limpando aplicação antiga (se houver)...'
             docker rm -f meu-app || true
