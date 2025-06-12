@@ -68,9 +68,9 @@ jobs:
               -w /usr/src \
               sonarsource/sonar-scanner-cli \
               sonar-scanner \
-              -Dsonar.projectKey=flask-app \
+              -Dsonar.projectKey=flask-henriquef-app \
               -Dsonar.sources=. \
-              -Dsonar.host.url=http://sonarhenriquef:9000 \
+              -Dsonar.host.url=http://201.23.3.86:8134 \
               -Dsonar.login=admin \
               -Dsonar.password=admin || {
                 echo "❌ Análise SonarQube falhou."
