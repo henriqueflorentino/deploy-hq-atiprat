@@ -56,7 +56,7 @@ jobs:
           SONAR_HOST_URL: http://201.23.3.86:8138
 
       - name: Verificar o Quality Gate do SonarQube
-        uses: SonarSource/sonarqube-quality-gate-check-action@v2.1.0
+        uses: SonarSource/sonarqube-quality-gate-check-action@v2.2.0
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
