@@ -6,24 +6,40 @@ on:
       - main
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Login no Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build da imagem Docker
+        run: docker build -t henriqueflorentino/deploy-hq-atiprat .
+
+      - name: Push da imagem para o Docker Hub
+        run: docker push henriqueflorentino/deploy-hq-atiprat:latest
+
   sonar_analysis:
     runs-on: ubuntu-latest
-
+    needs: build
     steps:
-      - name: Checkout repo
+      - name: Checkout do repositório
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Run SonarQube on remote server
+      - name: Iniciar contêiner do SonarQube no servidor remoto
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 201.23.3.86
           username: aluno
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
-          timeout: 30s
-          command_timeout: 15m
           script: |
             docker rm -f sonarqube_henrique || true
             docker volume rm -f sonarqube_data_henrique || true
@@ -31,7 +47,6 @@ jobs:
               -p 8138:9000 \
               -v sonarqube_data_henrique:/opt/sonarqube/data \
               sonarqube:lts
-            echo "Aguardando o SonarQube iniciar..."
             sleep 90
 
       - name: SonarQube Scan
@@ -39,21 +54,15 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: http://201.23.3.86:8138
-        with:
-          projectBaseDir: .
-          args: >
-            -Dsonar.projectKey=deploy-hq-atiprat
-            -Dsonar.sources=.
-            -Dsonar.project.name="Deploy HQ Atiprat"
 
-      - name: Check SonarQube Quality Gate
+      - name: Verificar o Quality Gate do SonarQube
         uses: SonarSource/sonarqube-quality-gate-check-action@v2.1.0
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: http://201.23.3.86:8138
 
-      - name: Stop and Remove SonarQube container
+      - name: Parar e remover o contêiner do SonarQube
         if: always()
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -61,8 +70,6 @@ jobs:
           username: aluno
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
-          timeout: 30s
-          command_timeout: 5m
           script: |
             docker rm -f sonarqube_henrique || true
             docker volume rm -f sonarqube_data_henrique || true
@@ -70,38 +77,18 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: sonar_analysis
-
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Build Docker image
-        run: |
-          docker build -t henriqueflorentino/deploy-hq-atiprat .
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Push image to Docker Hub
-        run: |
-          docker push henriqueflorentino/deploy-hq-atiprat
-
-      - name: Run deployment on remote server
+      - name: Deploy da aplicação no servidor remoto
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 201.23.3.86
           username: aluno
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
-          timeout: 30s
-          command_timeout: 15m
           script: |
             docker rm -f app_henrique db_henrique init-db-henrique || true
             docker network create rede-henrique || true
-            docker pull henriqueflorentino/deploy-hq-atiprat
+            docker pull henriqueflorentino/deploy-hq-atiprat:latest
             docker run -d --name db_henrique \
               --network rede-henrique \
               -e MYSQL_ROOT_PASSWORD=root \
@@ -111,25 +98,15 @@ jobs:
               -v db_data:/var/lib/mysql \
               -p 8135:3306 \
               mysql:8.0
-            echo "Aguardando o banco de dados iniciar..."
             sleep 90
             docker run --rm --name init-db-henrique \
               --network rede-henrique \
               -e MYSQL_HOST=db_henrique \
-              -e MYSQL_USER=user \
-              -e MYSQL_PASSWORD=password \
-              -e MYSQL_DB=mydb \
-              henriqueflorentino/deploy-hq-atiprat \
+              henriqueflorentino/deploy-hq-atiprat:latest \
               bash -c "sleep 10 && python init_db.py"
             docker run -d --name app_henrique \
               --network rede-henrique \
-              -e FLASK_APP=run.py \
-              -e FLASK_ENV=production \
-              -e FLASK_DEBUG=0 \
-              -e MYSQL_HOST=db_henrique \
-              -e MYSQL_USER=user \
-              -e MYSQL_PASSWORD=password \
-              -e MYSQL_DB=mydb \
               -p 8134:5000 \
-              henriqueflorentino/deploy-hq-atiprat
+              -e MYSQL_HOST=db_henrique \
+              henriqueflorentino/deploy-hq-atiprat:latest
             docker ps
