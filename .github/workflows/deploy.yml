@@ -51,16 +51,16 @@ jobs:
 
       - name: SonarQube Scan e Verificação do Quality Gate
         uses: SonarSource/sonarqube-scan-action@v2
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: http://201.23.3.86:8138
         with:
           args: >
+            -Dsonar.host.url=http://201.23.3.86:8138
             -Dsonar.projectKey=deploy-hq-atiprat
             -Dsonar.sources=.
             -Dsonar.project.name=Deploy-HQ-Atiprat
             -Dsonar.qualitygate.wait=true
             -Dsonar.qualitygate.timeout=300
+            -Dsonar.login=admin
+            -Dsonar.password=admin
 
       - name: Parar e remover o contêiner do SonarQube
         if: always()
