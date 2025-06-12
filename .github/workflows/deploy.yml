@@ -13,18 +13,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0 # Necessário para o SonarQube analisar todo o histórico
-
-      # Removendo o passo de instalação do sonarscanner via pip
-      # - name: Setup Python
-      #   uses: actions/setup-python@v4
-      #   with:
-      #     python-version: '3.x' 
-
-      # - name: Install dependencies
-      #   run: |
-      #     python -m pip install --upgrade pip
-      #     pip install sonarscanner # Esta linha será removida/comentada
+          fetch-depth: 0 
       
       - name: Run SonarQube on remote server
         uses: appleboy/ssh-action@v1.0.3
@@ -62,21 +51,24 @@ jobs:
               docker logs sonarqube_henrique
               exit 1
             fi
+            # Opcional: Adicionar um pequeno delay extra para garantir que todas as APIs estejam prontas
+            echo "Aguardando mais 10 segundos para APIs do SonarQube inicializarem completamente..."
+            sleep 10
         
       - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@master # Usando a ação oficial do SonarSource
+        uses: SonarSource/sonarqube-scan-action@master
         env:
-          SONAR_TOKEN: admin # Usamos 'admin' para o login/senha como você especificou
+          # Removendo SONAR_TOKEN daqui para usar apenas sonar.login/sonar.password
           SONAR_HOST_URL: http://201.23.3.86:8139
         with:
-          projectBaseDir: . # Onde seu código está no repositório
-          args: > # Parâmetros adicionais para o SonarScanner
+          projectBaseDir: .
+          args: >
             -Dsonar.projectKey=deploy-hq-atiprat
             -Dsonar.sources=.
             -Dsonar.login=admin
-            -Dsonar.password=admin
+            -Dsonar.password=admin # Garanta que esta linha está correta e não censurada com '***'
             -Dsonar.project.name="Deploy HQ Atiprat"
-            -Dsonar.python.version=3 # Adapte para a versão do seu Python
+            -Dsonar.python.version=3
           
       - name: Check SonarQube Quality Gate
         uses: appleboy/ssh-action@v1.0.3
@@ -91,7 +83,7 @@ jobs:
             PROJECT_KEY="deploy-hq-atiprat"
             SONAR_HOST_URL="http://localhost:8139"
             SONAR_LOGIN="admin"
-            SONAR_PASSWORD="admin"
+            SONAR_PASSWORD="admin" # Garanta que esta linha está correta
 
             # Aguardar o processamento da análise
             echo "⏳ Aguardando o processamento da análise do SonarQube..."
@@ -116,7 +108,7 @@ jobs:
             fi
 
       - name: Stop and Remove SonarQube container
-        if: always() # Garante que este passo será executado mesmo se o SonarQube falhar
+        if: always() 
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 201.23.3.86
@@ -133,7 +125,7 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
-    needs: sonar_analysis # Garante que o deploy só rode se a análise do SonarQube for bem-sucedida
+    needs: sonar_analysis 
 
     steps:
       - name: Checkout repo
