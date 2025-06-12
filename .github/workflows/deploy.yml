@@ -58,7 +58,7 @@ jobs:
           args: >
             -Dsonar.projectKey=deploy-hq-atiprat
             -Dsonar.sources=.
-            -Dsonar.project.name='Deploy HQ Atiprat'
+            -Dsonar.project.name=Deploy-HQ-Atiprat
             -Dsonar.qualitygate.wait=true
             -Dsonar.qualitygate.timeout=300
 
