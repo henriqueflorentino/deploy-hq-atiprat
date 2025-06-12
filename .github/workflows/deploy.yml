@@ -29,15 +29,15 @@ jobs:
             docker rm -f sonarqube_henrique || true
             docker volume rm -f sonarqube_data_henrique || true
 
-            echo '🚀 Iniciando container SonarQube temporário (versão LTS)...'
+            echo '🚀 Iniciando container SonarQube temporário (versão LTS) na porta 8138...'
             docker run -d --name sonarqube_henrique \
-              -p 8139:9000 \
+              -p 8138:9000 \
               -v sonarqube_data_henrique:/opt/sonarqube/data \
-              sonarqube:lts # <-- Garanta que está 'lts'
+              sonarqube:lts # <-- Mudei a porta para 8138 aqui
 
             echo '⏳ Aguardando SonarQube ficar pronto...'
-            for i in {1..90}; do # <-- Aumentei o tempo de espera para 90 tentativas (7.5 minutos)
-              HEALTH_CHECK=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8139/api/system/status)
+            for i in {1..90}; do 
+              HEALTH_CHECK=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8138/api/system/status) # <-- Mudei para 8138 aqui
               if [ "$HEALTH_CHECK" == "200" ]; then
                 echo "✅ SonarQube está pronto."
                 break
@@ -51,26 +51,22 @@ jobs:
               docker logs sonarqube_henrique
               exit 1
             fi
-            # Opcional: Adicionar um pequeno delay extra para garantir que todas as APIs estejam prontas
             echo "Aguardando mais 20 segundos para APIs do SonarQube inicializarem completamente..." 
             sleep 20
         
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@master
         env:
-          # REMOVIDO: SONAR_TOKEN. Deve usar apenas -Dsonar.login e -Dsonar.password
-          SONAR_HOST_URL: http://201.23.3.86:8139 # URL do SonarQube
+          SONAR_HOST_URL: http://201.23.3.86:8138 # <-- Mudei para 8138 aqui
         with:
           projectBaseDir: .
-          args: > # Múltiplas linhas para argumentos
+          args: > 
             -Dsonar.projectKey=deploy-hq-atiprat
             -Dsonar.sources=.
             -Dsonar.login=admin
             -Dsonar.password=admin # <--- Esta linha é CRUCIAL. Tem que estar assim no seu arquivo YAML
             -Dsonar.project.name="Deploy HQ Atiprat"
             -Dsonar.python.version=3
-            # Adicione aqui qualquer outra propriedade específica para análise Python se necessário, ex:
-            # -Dsonar.python.pip.install=true # Se sua aplicação Python tiver dependências e você quiser que o SonarScanner as considere
           
       - name: Check SonarQube Quality Gate
         uses: appleboy/ssh-action@v1.0.3
@@ -82,7 +78,6 @@ jobs:
           timeout: 30s
           command_timeout: 5m
           script: |
-            # Instala jq se não estiver presente (executado no servidor remoto)
             if ! command -v jq &> /dev/null
             then
                 echo "jq não encontrado. Instalando..."
@@ -90,13 +85,13 @@ jobs:
             fi
 
             PROJECT_KEY="deploy-hq-atiprat"
-            SONAR_HOST_URL="http://localhost:8139" # No servidor, o SonarQube está em localhost
+            SONAR_HOST_URL="http://localhost:8138" # <-- Mudei para 8138 aqui
             SONAR_LOGIN="admin"
             SONAR_PASSWORD="admin" 
 
             echo "⏳ Aguardando o processamento da análise do SonarQube..."
             ANALYSIS_STATUS=""
-            for i in {1..45}; do # Aumentei um pouco a espera aqui também
+            for i in {1..45}; do 
               RESPONSE=$(curl -s -u "${SONAR_LOGIN}:${SONAR_PASSWORD}" "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=${PROJECT_KEY}")
               STATUS=$(echo "$RESPONSE" | jq -r '.projectStatus.status')
 
@@ -133,11 +128,11 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
-    needs: sonar_analysis # Continua dependendo da análise do SonarQube
+    needs: sonar_analysis 
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions:checkout@v3
 
       - name: Build Docker image
         run: |
