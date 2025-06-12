@@ -89,7 +89,7 @@ jobs:
 
             echo '🚀 Subindo aplicação Flask...'
             docker run -d --name app_henrique \
-              --network minha-rede \
+              --network rede-henrique \
               -e FLASK_APP=run.py \
               -e FLASK_ENV=production \
               -e FLASK_DEBUG=0 \
