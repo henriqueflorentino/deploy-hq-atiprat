@@ -15,16 +15,17 @@ jobs:
         with:
           fetch-depth: 0 # Necessário para o SonarQube analisar todo o histórico
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.x' # Use a versão do Python da sua aplicação
+      # Removendo o passo de instalação do sonarscanner via pip
+      # - name: Setup Python
+      #   uses: actions/setup-python@v4
+      #   with:
+      #     python-version: '3.x' 
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install sonarscanner # Instala o SonarScanner CLI
-
+      # - name: Install dependencies
+      #   run: |
+      #     python -m pip install --upgrade pip
+      #     pip install sonarscanner # Esta linha será removida/comentada
+      
       - name: Run SonarQube on remote server
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -63,18 +64,18 @@ jobs:
             fi
         
       - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@master # Usando a ação oficial do SonarSource
         env:
+          SONAR_TOKEN: admin # Usamos 'admin' para o login/senha como você especificou
           SONAR_HOST_URL: http://201.23.3.86:8139
-          SONAR_LOGIN: admin
-          SONAR_PASSWORD: admin # O professor pediu para usar admin/admin
-        run: |
-          sonar-scanner \
-            -Dsonar.projectKey=deploy-hq-atiprat \
-            -Dsonar.sources=. \
-            -Dsonar.host.url=${{ env.SONAR_HOST_URL }} \
-            -Dsonar.login=${{ env.SONAR_LOGIN }} \
-            -Dsonar.password=${{ env.SONAR_PASSWORD }} \
-            -Dsonar.project.name="Deploy HQ Atiprat" \
+        with:
+          projectBaseDir: . # Onde seu código está no repositório
+          args: > # Parâmetros adicionais para o SonarScanner
+            -Dsonar.projectKey=deploy-hq-atiprat
+            -Dsonar.sources=.
+            -Dsonar.login=admin
+            -Dsonar.password=admin
+            -Dsonar.project.name="Deploy HQ Atiprat"
             -Dsonar.python.version=3 # Adapte para a versão do seu Python
           
       - name: Check SonarQube Quality Gate
