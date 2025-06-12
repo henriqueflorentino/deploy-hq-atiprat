@@ -104,9 +104,17 @@ jobs:
               -e MYSQL_HOST=db_henrique \
               henriqueflorentino/deploy-hq-atiprat:latest \
               bash -c "sleep 10 && python init_db.py"
+            echo '🚀 Subindo aplicação Flask...'
+            
             docker run -d --name app_henrique \
               --network rede-henrique \
-              -p 8134:5000 \
+              -e FLASK_APP=run.py \
+              -e FLASK_ENV=production \
+              -e FLASK_DEBUG=0 \
               -e MYSQL_HOST=db_henrique \
-              henriqueflorentino/deploy-hq-atiprat:latest
+              -e MYSQL_USER=user \
+              -e MYSQL_PASSWORD=password \
+              -e MYSQL_DB=mydb \
+              -p 8134:5000 \
+              henriqueflorentino/deploy-hq-atiprat
             docker ps
