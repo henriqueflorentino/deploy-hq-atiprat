@@ -97,7 +97,6 @@ jobs:
               -e MYSQL_USER=user \
               -e MYSQL_PASSWORD=password \
               -e MYSQL_DATABASE=mydb \
-              -v $(pwd):/app \
               -p 8134:5000 \
               henriqueflorentino/deploy-hq-atiprat
 
