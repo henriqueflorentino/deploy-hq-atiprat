@@ -61,15 +61,24 @@ jobs:
               -e SONAR_JAVA_OPTS="-Xmx512m -Xms256m" \
               sonarqube:lts-community
 
-            echo '⏳ Aguardando SonarQube ficar pronto...'
-            for i in {1..60}; do
-              if curl -s http://localhost:8134/api/system/health | grep -q '"status":"UP"'; then
-                echo "✅ SonarQube está pronto."
-                break
+              echo '⏳ Aguardando SonarQube ficar pronto...'
+              for i in {1..30}; do
+                if curl -s http://localhost:8134/api/system/health | grep -q '"status":"UP"'; then
+                  echo "✅ SonarQube está pronto."
+                  break
+                fi
+                echo "⌛ Ainda não está pronto... aguardando 5s ($i/30)"
+                sleep 5
+              done
+              
+              if ! curl -s http://localhost:8134/api/system/health | grep -q '"status":"UP"'; then
+                echo "❌ SonarQube não ficou pronto a tempo. Logs:"
+                docker logs sonarhenriquef || true
+                docker stop sonarhenriquef
+                docker rm sonarhenriquef
+                exit 1
               fi
-              echo "⌛ Ainda não está pronto... aguardando 10s ($i/60)"
-              sleep 10
-            done
+
 
             if ! curl -s http://localhost:8134/api/system/health | grep -q '"status":"UP"'; then
               echo "❌ SonarQube não ficou pronto a tempo. Logs:"
