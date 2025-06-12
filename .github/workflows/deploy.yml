@@ -38,11 +38,11 @@ jobs:
           command_timeout: 15m
           script: |
             echo '🧹 Limpando containers antigos...'
-            docker rm -f meu-app init-db db || true
+            docker rm -f meu-app init-db db_henrique || true
             docker network create minha-rede || true
 
             echo '🐬 Subindo container do MySQL...'
-            docker run -d --name db \
+            docker run -d --name db_henrique \
               --network minha-rede \
               -e MYSQL_ROOT_PASSWORD=root \
               -e MYSQL_DATABASE=mydb \
@@ -58,7 +58,7 @@ jobs:
 
             echo '⏳ Aguardando MySQL ficar saudável...'
             for i in {1..30}; do
-              STATUS=$(docker inspect --format='{{json .State.Health.Status}}' db)
+              STATUS=$(docker inspect --format='{{json .State.Health.Status}}' db_henrique)
               if [ "$STATUS" == "\"healthy\"" ]; then
                 echo "✅ MySQL está saudável."
                 break
@@ -69,14 +69,14 @@ jobs:
 
             if [ "$STATUS" != "\"healthy\"" ]; then
               echo "❌ MySQL não ficou saudável a tempo. Logs:"
-              docker logs db
+              docker logs db_henrique
               exit 1
             fi
 
             echo '⚙️ Inicializando banco de dados...'
             docker run --rm --name init-db \
               --network minha-rede \
-              -e MYSQL_HOST=db \
+              -e MYSQL_HOST=db_henrique \
               -e MYSQL_USER=user \
               -e MYSQL_PASSWORD=password \
               -e MYSQL_DATABASE=mydb \
@@ -89,8 +89,8 @@ jobs:
               -e FLASK_APP=run.py \
               -e FLASK_ENV=production \
               -e FLASK_DEBUG=0 \
-              -e SECRET_KEY=sua-chave-super-secreta \
-              -e MYSQL_HOST=db \
+              -e SECRET_KEY=${{ secrets.SECRET_KEY }} \
+              -e MYSQL_HOST=db_henrique \
               -e MYSQL_USER=user \
               -e MYSQL_PASSWORD=password \
               -e MYSQL_DATABASE=mydb \
