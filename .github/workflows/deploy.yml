@@ -29,20 +29,20 @@ jobs:
             docker rm -f sonarqube_henrique || true
             docker volume rm -f sonarqube_data_henrique || true
 
-            echo '🚀 Iniciando container SonarQube temporário...'
+            echo '🚀 Iniciando container SonarQube temporário (versão LTS)...'
             docker run -d --name sonarqube_henrique \
               -p 8139:9000 \
               -v sonarqube_data_henrique:/opt/sonarqube/data \
-              sonarqube:latest
+              sonarqube:lts # <-- Mudei para LTS aqui
 
             echo '⏳ Aguardando SonarQube ficar pronto...'
-            for i in {1..60}; do
+            for i in {1..90}; do # <-- Aumentei o tempo de espera para 90 tentativas (7.5 minutos)
               HEALTH_CHECK=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8139/api/system/status)
               if [ "$HEALTH_CHECK" == "200" ]; then
                 echo "✅ SonarQube está pronto."
                 break
               fi
-              echo "⌛ Aguardando SonarQube... ($i/60)"
+              echo "⌛ Aguardando SonarQube... ($i/90)"
               sleep 5
             done
 
@@ -52,13 +52,12 @@ jobs:
               exit 1
             fi
             # Opcional: Adicionar um pequeno delay extra para garantir que todas as APIs estejam prontas
-            echo "Aguardando mais 10 segundos para APIs do SonarQube inicializarem completamente..."
-            sleep 10
+            echo "Aguardando mais 20 segundos para APIs do SonarQube inicializarem completamente..." # <-- Aumentei o sleep
+            sleep 20
         
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@master
         env:
-          # Removendo SONAR_TOKEN daqui para usar apenas sonar.login/sonar.password
           SONAR_HOST_URL: http://201.23.3.86:8139
         with:
           projectBaseDir: .
@@ -66,7 +65,7 @@ jobs:
             -Dsonar.projectKey=deploy-hq-atiprat
             -Dsonar.sources=.
             -Dsonar.login=admin
-            -Dsonar.password=admin # Garanta que esta linha está correta e não censurada com '***'
+            -Dsonar.password=admin # <-- Garanta que está exatamente assim no seu arquivo YAML
             -Dsonar.project.name="Deploy HQ Atiprat"
             -Dsonar.python.version=3
           
@@ -83,9 +82,8 @@ jobs:
             PROJECT_KEY="deploy-hq-atiprat"
             SONAR_HOST_URL="http://localhost:8139"
             SONAR_LOGIN="admin"
-            SONAR_PASSWORD="admin" # Garanta que esta linha está correta
+            SONAR_PASSWORD="admin" 
 
-            # Aguardar o processamento da análise
             echo "⏳ Aguardando o processamento da análise do SonarQube..."
             ANALYSIS_STATUS=""
             for i in {1..30}; do
