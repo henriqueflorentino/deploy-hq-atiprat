@@ -30,7 +30,6 @@ def index():
         if 'cur' in locals():
             cur.close()
 
-# ... (mantenha o resto do routes.py como estava anteriormente)
 
 @app.route('/create', methods=['GET', 'POST'])
 def create():
